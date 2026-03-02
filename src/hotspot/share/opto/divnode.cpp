@@ -1593,22 +1593,28 @@ const Type* ModDNode::get_result_if_constant(const Type* dividend, const Type* d
 }
 
 Node* ModFloatingNode::Ideal(PhaseGVN* phase, bool can_reshape) {
-  if (can_reshape) {
-    PhaseIterGVN* igvn = phase->is_IterGVN();
-
-    // Either input is TOP ==> the result is TOP
-    const Type* dividend_type = phase->type(dividend());
-    const Type* divisor_type = phase->type(divisor());
-    if (dividend_type == Type::TOP || divisor_type == Type::TOP) {
-      return phase->C->top();
-    }
-    const Type* constant_result = get_result_if_constant(dividend_type, divisor_type);
-    if (constant_result != nullptr) {
-      return make_tuple_of_input_state_and_constant_result(igvn, constant_result);
-    }
-  }
-
   return CallLeafPureNode::Ideal(phase, can_reshape);
+}
+
+const Type* ModFloatingNode::Value(PhaseGVN* phase) const {
+  const Type* t = CallLeafPureNode::Value(phase);
+  if (t == Type::TOP) { return Type::TOP; }
+  const Type* dividend_type = phase->type(dividend());
+  const Type* divisor_type = phase->type(divisor());
+  if (dividend_type == Type::TOP || divisor_type == Type::TOP) {
+    return Type::TOP;
+  }
+  const Type* constant_result = get_result_if_constant(dividend_type, divisor_type);
+  if (constant_result != nullptr) {
+    const TypeTuple* tt = t->is_tuple();
+    uint cnt = tt->cnt();
+    const Type** fields = TypeTuple::fields(cnt);
+    for (uint i = 0; i < cnt; i++) {
+      fields[i] = (i == TypeFunc::Parms) ? constant_result : tt->field_at(i);
+    }
+    return TypeTuple::make(cnt, fields);
+  }
+  return t;
 }
 
 /* Give a tuple node for ::Ideal to return, made of the input state (control to return addr)

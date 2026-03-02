@@ -185,6 +185,7 @@ protected:
 public:
   ModFloatingNode(Compile* C, const TypeFunc* tf, address addr, const char* name);
   Node* Ideal(PhaseGVN* phase, bool can_reshape) override;
+  const Type* Value(PhaseGVN* phase) const override;
 };
 
 // Float Modulus
