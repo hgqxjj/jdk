@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2025, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2026, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -1611,24 +1611,6 @@ const Type* ModFloatingNode::Value(PhaseGVN* phase) const {
     return TypeTuple::make(cnt, fields);
   }
   return t;
-}
-
-/* Give a tuple node for ::Ideal to return, made of the input state (control to return addr)
- * and the given constant result. Idealization of projections will make sure to transparently
- * propagate the input state and replace the result by the said constant.
- */
-TupleNode* ModFloatingNode::make_tuple_of_input_state_and_constant_result(PhaseIterGVN* phase, const Type* con) const {
-  Node* con_node = phase->makecon(con);
-  TupleNode* tuple = TupleNode::make(
-      tf()->range(),
-      in(TypeFunc::Control),
-      in(TypeFunc::I_O),
-      in(TypeFunc::Memory),
-      in(TypeFunc::FramePtr),
-      in(TypeFunc::ReturnAdr),
-      con_node);
-
-  return tuple;
 }
 
 //=============================================================================
