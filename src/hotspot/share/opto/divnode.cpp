@@ -1592,10 +1592,6 @@ const Type* ModDNode::get_result_if_constant(const Type* dividend, const Type* d
   return TypeD::make(jdouble_cast(xr));
 }
 
-Node* ModFloatingNode::Ideal(PhaseGVN* phase, bool can_reshape) {
-  return CallLeafPureNode::Ideal(phase, can_reshape);
-}
-
 const Type* ModFloatingNode::Value(PhaseGVN* phase) const {
   const Type* t = CallLeafPureNode::Value(phase);
   if (t == Type::TOP) { return Type::TOP; }
