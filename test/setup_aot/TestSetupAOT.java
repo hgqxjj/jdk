@@ -90,7 +90,6 @@ public class TestSetupAOT {
                     throw new RuntimeException("\"" + s + "\" missing from tool output");
                 }
             }
-
             return this;
         }
 
