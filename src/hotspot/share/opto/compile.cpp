@@ -4530,45 +4530,60 @@ Compile::TracePhase::~TracePhase() {
 }
 
 //----------------------------static_subtype_check-----------------------------
-// Shortcut important common cases when superklass is exact:
-// (0) superklass is java.lang.Object (can occur in reflective code)
-// (1) subklass is already limited to a subtype of superklass => always ok
-// (2) subklass does not overlap with superklass => always fail
-// (3) superklass has NO subtypes and we can check with a simple compare.
 Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* superk, const TypeKlassPtr* subk, bool skip) {
   if (skip) {
     return SSC_full_test;       // Let caller generate the general case.
   }
 
-  if (subk->is_java_subtype_of(superk)) {
-    return SSC_always_true; // (0) and (1)  this test cannot fail
+  if (subk->higher_equal(superk)) {
+    return SSC_always_true;
   }
 
-  if (!subk->maybe_java_subtype_of(superk)) {
-    return SSC_always_false; // (2) true path dead; no dynamic test needed
-  }
+  const Type* tboth = subk->filter_speculative(superk);
 
-  const Type* superelem = superk;
-  if (superk->isa_aryklassptr()) {
-    int ignored;
-    superelem = superk->is_aryklassptr()->base_element_type(ignored);
-  }
+  if (tboth == Type::TOP) {
+    ciInstanceKlass* ik_super = superk->isa_instklassptr() ?
+                                         superk->is_instklassptr()->instance_klass() :
+                                         nullptr;
+    ciInstanceKlass* ik_sub = subk->isa_instklassptr() ?
+                                     subk->is_instklassptr()->instance_klass() :
+                                     nullptr;
 
-  if (superelem->isa_instklassptr()) {
-    ciInstanceKlass* ik = superelem->is_instklassptr()->instance_klass();
-    if (!ik->has_subklass()) {
-      if (!ik->is_final()) {
-        // Add a dependency if there is a chance of a later subclass.
-        dependencies()->assert_leaf_type(ik);
-      }
-      if (!superk->maybe_java_subtype_of(subk)) {
-        return SSC_always_false;
-      }
-      return SSC_easy_test;     // (3) caller can do a simple ptr comparison
+    if (ik_super != nullptr && !ik_super->is_final() && !ik_super->has_subklass()) {
+      dependencies()->assert_leaf_type(ik_super);
     }
-  } else {
-    // A primitive array type has no subtypes.
-    return SSC_easy_test;       // (3) caller can do a simple ptr comparison
+
+    if (ik_sub != nullptr && !ik_sub->is_final() && !ik_sub->has_subklass()) {
+      dependencies()->assert_leaf_type(ik_sub);
+    }
+
+    return SSC_always_false;
+  }
+
+  if (subk->klass_is_exact()){
+    assert(tboth != subk && tboth != Type::TOP, "tboth should not equal subk and Type::TOP.");
+    return SSC_always_false;
+  }
+
+  if (Type::equals(tboth, superk)) {
+    const Type* superelem = superk;
+    if (superk->isa_aryklassptr()) {
+      int ignored;
+      superelem = superk->is_aryklassptr()->base_element_type(ignored);
+    }
+
+    if (superelem->isa_instklassptr()) {
+      ciInstanceKlass* ik = superelem->is_instklassptr()->instance_klass();
+      if (!ik->has_subklass()) {
+        if (!ik->is_final()) {
+          dependencies()->assert_leaf_type(ik);
+        }
+        return SSC_easy_test;  // runtime check can be done with simple pointer comparison
+      }
+    } else {
+      // primitive array or non-instklass
+      return SSC_easy_test;
+    }
   }
 
   return SSC_full_test;
