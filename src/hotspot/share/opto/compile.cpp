@@ -4535,12 +4535,16 @@ Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* su
     return SSC_full_test;       // Let caller generate the general case.
   }
 
-  if (subk->higher_equal(superk)) {
-    return SSC_always_true;
+  if (subk->is_java_subtype_of(superk)) {
+    return SSC_always_true; // (0) and (1)  this test cannot fail
   }
 
   const Type* tboth = subk->filter_speculative(superk);
-
+  
+  if (Type::equals(tboth, subk)) {
+    return SSC_always_true;
+  }
+  
   if (tboth == Type::TOP) {
     ciInstanceKlass* ik_super = superk->isa_instklassptr() ?
                                          superk->is_instklassptr()->instance_klass() :
@@ -4561,7 +4565,7 @@ Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* su
   }
 
   if (subk->klass_is_exact()){
-    assert(tboth != subk && tboth != Type::TOP, "tboth should not equal subk and Type::TOP.");
+    assert(!Type::equals(tboth, subk) && tboth != Type::TOP, "tboth should not equal subk and Type::TOP.");
     return SSC_always_false;
   }
 
