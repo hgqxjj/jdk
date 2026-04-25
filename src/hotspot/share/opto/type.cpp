@@ -5962,33 +5962,25 @@ template <class T1, class T2> bool TypePtr::maybe_java_subtype_of_helper_for_ins
     return this_one->is_java_subtype_of(other);
   }
 
-  bool this_is_subtype = this_one->klass()->is_subtype_of(other->klass());
+  const Type* tboth = this_one->filter(other);
 
-  if (!this_is_subtype && !other->klass()->is_subtype_of(this_one->klass())) {
+  if (tboth == Type::TOP) {
+    const TypeKlassPtr* otherk = other->isa_klassptr() ? other->is_klassptr() : other->is_oopptr()->as_klass_type();
+    const TypeKlassPtr* thisonek = this_one->isa_klassptr() ? this_one->is_klassptr() : this_one->is_oopptr()->as_klass_type();
+    ciInstanceKlass* ik_super = otherk->is_instklassptr()->instance_klass();
+    ciInstanceKlass* ik_sub   = thisonek->is_instklassptr()->instance_klass();
+
+    if (ik_super && !ik_super->is_final() && !ik_super->has_subklass()) {
+        Compile::current()->dependencies()->assert_leaf_type(ik_super);
+    }
+    if (ik_sub && !ik_sub->is_final() && !ik_sub->has_subklass()) {
+        Compile::current()->dependencies()->assert_leaf_type(ik_sub);
+    }
     return false;
   }
 
-  if (this_exact) {
-    return this_is_subtype && this_one->_interfaces->contains(other->_interfaces);
-  }
-
-  // If 'this_one' has interface constraints, check if 'other' satisfies them
-  // when 'other' is a subtype of 'this_one' and narrowed to a unique leaf
-  // via CHA. If not, this subtype relationship is impossible.
-  if (!this_one->_interfaces->empty() &&
-      ((this_is_subtype && (other->klass() == this_one->klass())) || !this_is_subtype)) {
-    const TypeKlassPtr* otherk = other->isa_klassptr() ? other->is_klassptr() :
-                                                         other->is_oopptr()->as_klass_type();
-    const TypeKlassPtr* improved_other = otherk->try_improve();
-    ciInstanceKlass* improved_ik = improved_other->is_instklassptr()->instance_klass();
-    if (!improved_ik->has_subklass()) {
-      if (!improved_other->_interfaces->contains(this_one->_interfaces)) {
-        if (!improved_ik->is_final()) {
-          Compile::current()->dependencies()->assert_leaf_type(improved_ik);
-        }
-        return false;
-      }
-    }
+  if (this_exact && !Type::equals(tboth, this_one)) {
+    return false;
   }
 
   return true;
