@@ -4500,6 +4500,10 @@ Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* su
 
   const Type* tboth = subk_e->filter_speculative(superk_e);
   if (tboth == Type::TOP) {
+    if (superk_e->klass_is_exact()) {
+      return SSC_always_false;
+    }
+
     ciInstanceKlass* ik_super = superk_e->isa_instklassptr() ? superk_e->is_instklassptr()->instance_klass() : nullptr;
     ciInstanceKlass* ik_sub = subk_e->isa_instklassptr() ? subk_e->is_instklassptr()->instance_klass() : nullptr;
     if (ik_super != nullptr && ik_sub != nullptr) {
