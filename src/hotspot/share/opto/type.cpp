@@ -4988,7 +4988,6 @@ const Type *TypeAryPtr::xmeet_helper(const Type *t) const {
   return this;                  // Lint noise
 }
 
-
 template<class T> TypePtr::MeetResult TypePtr::meet_aryptr(PTR& ptr, const Type*& elem, const T* this_ary,
                                                            const T* other_ary, ciKlass*& res_klass, bool& res_xk) {
   int dummy;
@@ -6169,6 +6168,13 @@ const TypeOopPtr* TypeAryKlassPtr::as_instance_type(bool klass_change) const {
   return TypeAryPtr::make(TypePtr::BotPTR, TypeAry::make(el, TypeInt::POS), k, xk, 0);
 }
 
+static const Type* lower_klassptr(const Type* t) {
+  const TypeKlassPtr* kptr = t->isa_klassptr();
+  if (kptr != nullptr && kptr->ptr() == TypePtr::AnyNull) {
+    return kptr->cast_to_ptr_type(TypePtr::NotNull);
+  }
+  return t;
+}
 
 //------------------------------xmeet------------------------------------------
 // Compute the MEET of two types, return a new Type object.
@@ -6248,9 +6254,17 @@ const Type    *TypeAryKlassPtr::xmeet( const Type *t ) const {
     const Type* elem = _elem->meet(tap->_elem);
 
     PTR ptr = meet_ptr(tap->ptr());
+    const PTR old_ptr = ptr;
     ciKlass* res_klass = nullptr;
     bool res_xk = false;
-    meet_aryptr(ptr, elem, this, tap, res_klass, res_xk);
+    TypePtr::MeetResult result = meet_aryptr(ptr, elem, this, tap, res_klass, res_xk);
+    if (result == TypePtr::NOT_SUBTYPE &&
+        old_ptr == TypePtr::Constant &&
+        ptr == TypePtr::NotNull) {
+      const Type* e1 = lower_klassptr(_elem);
+      const Type* e2 = lower_klassptr(tap->_elem);
+      elem = e1->meet(e2);
+    }
     assert(res_xk == (ptr == Constant), "");
     return make(ptr, elem, res_klass, off);
   } // End of case KlassPtr
