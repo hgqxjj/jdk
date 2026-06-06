@@ -6171,7 +6171,10 @@ const TypeOopPtr* TypeAryKlassPtr::as_instance_type(bool klass_change) const {
 
 static const Type* lower_klassptr(const Type* t) {
   const TypeKlassPtr* kptr = t->isa_klassptr();
-  if (kptr != nullptr && kptr->ptr() == TypePtr::AnyNull) {
+  if (kptr == nullptr) {
+    return nullptr;
+  }
+  if (kptr->ptr() == TypePtr::AnyNull) {
     return kptr->cast_to_ptr_type(TypePtr::NotNull);
   }
   return t;
@@ -6255,7 +6258,7 @@ const Type    *TypeAryKlassPtr::xmeet( const Type *t ) const {
     const Type* elem = _elem->meet(tap->_elem);
 
     PTR ptr = meet_ptr(tap->ptr());
-    const PTR old_ptr = ptr;
+    PTR old_ptr = ptr;
     ciKlass* res_klass = nullptr;
     bool res_xk = false;
     TypePtr::MeetResult result = meet_aryptr(ptr, elem, this, tap, res_klass, res_xk);
@@ -6264,7 +6267,10 @@ const Type    *TypeAryKlassPtr::xmeet( const Type *t ) const {
         ptr == TypePtr::NotNull) {
       const Type* e1 = lower_klassptr(_elem);
       const Type* e2 = lower_klassptr(tap->_elem);
-      elem = e1->meet(e2);
+      if (e1 != nullptr && e2 != nullptr &&
+          (e1 != _elem || e2 != tap->_elem)) {
+        elem = e1->meet(e2);
+      }
     }
     assert(res_xk == (ptr == Constant), "");
     return make(ptr, elem, res_klass, off);
