@@ -4503,7 +4503,7 @@ Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* su
 
   bool subk_e_higher = subk_e->higher_equal(superk_e);
 
-  if (subk_e_higher && (superk_is_exact || superk_e->klass_is_exact())) {
+  if (subk_e_higher) {
     return SSC_always_true;
   }
 
