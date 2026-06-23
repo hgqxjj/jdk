@@ -4463,65 +4463,6 @@ Compile::TracePhase::~TracePhase() {
   }
 }
 
-static bool filter_top_but_maybe_subtype_of(const TypeKlassPtr* subk,
-                                            const TypeKlassPtr* superk) {
-  const bool sub_is_array = subk->isa_aryklassptr() != nullptr;
-  const bool super_is_array = superk->isa_aryklassptr() != nullptr;
-
-  // Handle class-vs-class and array-vs-array only.
-  // Mixed array/class cases does not need to rescue.
-  if (sub_is_array != super_is_array) {
-    return false;
-  }
-
-  int sub_dims = 0;
-  int super_dims = 0;
-
-  const Type* sub_base_t = subk;
-  if (sub_is_array) {
-    sub_base_t = subk->is_aryklassptr()->base_element_type(sub_dims);
-  }
-
-  const Type* super_base_t = superk;
-  if (super_is_array) {
-    super_base_t = superk->is_aryklassptr()->base_element_type(super_dims);
-  }
-
-  const TypeInstKlassPtr* sub_base = sub_base_t->isa_instklassptr();
-  const TypeInstKlassPtr* super_base = super_base_t->isa_instklassptr();
-
-  // Primitive array base elements, or anything not represented as an instance
-  // klass, cannot be one of the interface-mismatch cases below.
-  if (sub_base == nullptr || super_base == nullptr) {
-    return false;
-  }
-
-  // For arrays, only same-dimensional arrays are treated as possible
-  // interface-mismatch cases.
-  if (sub_dims != super_dims) {
-    return false;
-  }
-
-  // We only want to rescue TOP results that may have been caused by
-  // incompatible interface constraints, for example:
-  // (A&I1)[]  vs (B&I2)[]
-  // A&I1      vs B&I2
-  // I1[]      vs I2[]
-  // I1[]      vs A[]
-  if (!sub_base->has_interface_constraints() &&
-      !super_base->has_interface_constraints()) {
-    return false;
-  }
-
-  ciInstanceKlass* sub_ik = sub_base->instance_klass();
-  ciInstanceKlass* super_ik = super_base->instance_klass();
-
-  // If the class parts are related, a common concrete subtype may still exist
-  // even though filter() returned TOP due to incompatible interface constraints.
-  return sub_ik->is_subtype_of(super_ik) ||
-         super_ik->is_subtype_of(sub_ik);
-}
-
 static const TypeKlassPtr* exact_if_leaf(const TypeKlassPtr* tk) {
   if (tk->klass_is_exact()) {
     return tk;
@@ -4572,16 +4513,7 @@ Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* su
 
   const Type* tboth = subk_e->filter(superk_e);
   if (tboth == Type::TOP) {
-    if (superk_e->klass_is_exact()) {
-      return SSC_always_false;
-    }
-    // filter() returning TOP usually means that there is no overlap between
-    // the two type sets. However, it may also be caused by incompatible
-    // interface constraints. In such cases, Java subtype checks may still
-    // succeed for a concrete subtype that implements the required interfaces.
-    if (!filter_top_but_maybe_subtype_of(subk_e, superk_e)) {
-      return SSC_always_false;
-    }
+    return SSC_always_false;
   }
 
   const Type* superelem = superk_e;
