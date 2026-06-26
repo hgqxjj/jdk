@@ -4463,7 +4463,7 @@ Compile::TracePhase::~TracePhase() {
   }
 }
 
-static ciInstanceKlass* leaf_instance_klass(const TypeKlassPtr* tk) {
+static ciInstanceKlass* base_element_instance_klass(const TypeKlassPtr* tk) {
   const Type* elem_t = tk;
   if (elem_t->isa_aryklassptr()) {
     int ignored;
@@ -4471,10 +4471,7 @@ static ciInstanceKlass* leaf_instance_klass(const TypeKlassPtr* tk) {
   }
 
   if (elem_t->isa_instklassptr()) {
-    ciInstanceKlass* ik = elem_t->is_instklassptr()->instance_klass();
-    if (!ik->has_subklass()) {
-      return ik;
-    }
+    return elem_t->is_instklassptr()->instance_klass();
   }
 
   return nullptr;
@@ -4485,16 +4482,17 @@ static const TypeKlassPtr* exact_if_leaf(const TypeKlassPtr* tk) {
     return tk;
   }
 
-  if (leaf_instance_klass(tk) != nullptr) {
+  ciInstanceKlass* ik = base_element_instance_klass(tk);
+  if (ik != nullptr && !ik->has_subklass()) {
     return tk->cast_to_exactness(true);
   }
 
   return tk;
 }
 
-static bool add_leaf_dependency_if_needed(const TypeKlassPtr* tk) {
-  ciInstanceKlass* ik = leaf_instance_klass(tk);
-  if (ik == nullptr) {
+static bool has_no_subklass(const TypeKlassPtr* tk) {
+  ciInstanceKlass* ik = base_element_instance_klass(tk);
+  if (ik == nullptr || ik->has_subklass()) {
     return false;
   }
 
@@ -4519,16 +4517,15 @@ Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* su
   const bool subk_is_exact = subk->klass_is_exact();
   const TypeKlassPtr* superk_ne = superk->cast_to_exactness(false);
 
-  // For always_true, do not narrow subk. This is a stable check against
-  // the non-exact super type.
   const bool subk_higher = subk->higher_equal(superk_ne);
 
   if (subk_higher &&
-      (superk_is_exact || add_leaf_dependency_if_needed(superk))) {
+      (superk_is_exact || has_no_subklass(superk))) {
     return SSC_always_true;
   }
 
-  if (!subk_higher && (subk_is_exact || add_dependency_if_needed(subk))) {
+  if (!subk_higher &&
+      (subk_is_exact || has_no_subklass(subk))) {
     return SSC_always_false;
   }
 
@@ -4537,25 +4534,18 @@ Compile::SubTypeCheckResult Compile::static_subtype_check(const TypeKlassPtr* su
 
   const Type* ft = subk_e->filter(superk_e);
   if (ft == Type::TOP &&
-      (superk_e == superk_ne || add_leaf_dependency_if_needed(superk)) &&
-      (subk_e == subk || add_leaf_dependency_if_needed(subk))) {
+      (superk_e == superk_ne || has_no_subklass(superk)) &&
+      (subk_e == subk || has_no_subklass(subk))) {
     return SSC_always_false;
   }
 
-  const Type* superelem = superk;
-  if (superk->isa_aryklassptr()) {
-    int ignored;
-    superelem = superk->is_aryklassptr()->base_element_type(ignored);
-  }
-
-  if (superelem->isa_instklassptr()) {
-    ciInstanceKlass* ik = superelem->is_instklassptr()->instance_klass();
-
+  ciInstanceKlass* ik = base_element_instance_klass(superk);
+  if (ik != nullptr) {
     if (!ik->is_interface() &&
-        (ik->is_final() || add_leaf_dependency_if_needed(superk))) {
+        (ik->is_final() || has_no_subklass(superk))) {
       return SSC_easy_test;
     }
-  } else {
+  } else if (superk->isa_aryklassptr()) {
     return SSC_easy_test; // primitive array type has no subtypes
   }
 
