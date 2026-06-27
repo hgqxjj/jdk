@@ -33,6 +33,7 @@
  * @requires vm.compiler2.enabled
  *
  * @run main/othervm -Xcomp -XX:-TieredCompilation
+ *      -XX:CompileCommand=compileonly,compiler.escapeAnalysis.BCEscapeOverflowHelper::caller
  *      compiler.escapeAnalysis.TestBCEscapeAnalyzerOverflow
  */
 
