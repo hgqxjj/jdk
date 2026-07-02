@@ -5050,7 +5050,10 @@ template<class T> TypePtr::MeetResult TypePtr::meet_aryptr(PTR& ptr, const Type*
          (other_xk && !other_ary->is_meet_subtype_of(this_ary)) ||
          // 'this' is exact and super or unrelated:
          (this_xk && !this_ary->is_meet_subtype_of(other_ary)))) {
-      if (above_centerline(ptr) || (elem->make_ptr() && above_centerline(elem->make_ptr()->_ptr))) {
+      const bool aryklass_meet = this_ary->base() == Type::AryKlassPtr;
+      if (above_centerline(ptr) ||
+          (aryklass_meet && ptr == Constant) ||
+          (elem->make_ptr() && above_centerline(elem->make_ptr()->_ptr))) {
         elem = Type::BOTTOM;
       }
       ptr = NotNull;
