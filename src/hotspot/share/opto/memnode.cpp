@@ -775,12 +775,21 @@ uint8_t MemNode::barrier_data(const Node* n) {
   return 0;
 }
 
-AccessAnalyzer::AccessAnalyzer(PhaseGVN* phase, MemNode* n)
-  : _phase(phase), _n(n), _memory_size(n->memory_size()), _alias_idx(-1) {
-  Node* adr  = _n->in(MemNode::Address);
+AccessAnalyzer::AccessAnalyzer(PhaseGVN* phase, MemNode* n) :
+  _phase(phase),
+  _n(n),
+  _memory_size(n->memory_size()),
+  _alias_idx(-1),
+  _adr(n->in(MemNode::Address)),
+  _store(n->isa_Store()),
+  _opcode(n->Opcode()),
+  _is_StoreVector(_store != nullptr && _store->is_StoreVector()),
+  _store_write_is_contiguous(false),
+  _can_compare_offsets(false) {
+
   _offset    = 0;
-  _base      = AddPNode::Ideal_base_and_offset(adr, _phase, _offset);
-  _maybe_raw = MemNode::check_if_adr_maybe_raw(adr);
+  _base      = AddPNode::Ideal_base_and_offset(_adr, _phase, _offset);
+  _maybe_raw = MemNode::check_if_adr_maybe_raw(_adr);
   _alloc     = AllocateNode::Ideal_allocation(_base);
   _adr_type = _n->adr_type();
 
@@ -789,6 +798,18 @@ AccessAnalyzer::AccessAnalyzer(PhaseGVN* phase, MemNode* n)
     _alias_idx = _phase->C->get_alias_index(_adr_type);
     assert(_alias_idx != Compile::AliasIdxTop, "must not be a dead node");
     assert(_alias_idx != Compile::AliasIdxBot || !phase->C->do_aliasing(), "must not be a very wide access");
+  }
+
+  _can_compare_offsets = _adr_type != nullptr &&
+                         _adr_type->base() != TypePtr::AnyPtr &&
+                         _base != nullptr &&
+                         _offset != Type::OffsetBot;
+
+  if (_store != nullptr) {
+    _store_write_is_contiguous = !_is_StoreVector ||
+                                 _opcode == Op_StoreVector ||
+                                 (_opcode == Op_StoreVectorMasked &&
+                                  VectorNode::is_all_ones_vector(_store->as_StoreVectorMasked()->mask()));
   }
 }
 
@@ -941,6 +962,93 @@ AccessAnalyzer::AccessIndependence AccessAnalyzer::detect_access_independence(No
   }
 
   return {false, nullptr};
+}
+
+// Return true if the current store fully covers all bytes written by 'other'.
+bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
+  assert(_store != nullptr, "current access must be a store");
+
+  int other_size = other->memory_size();
+  if (_memory_size < other_size) {
+    return false;
+  }
+
+  Node* other_adr = other->in(MemNode::Address);
+  int other_opcode = other->Opcode();
+  // True if 'other' can be described by a contiguous address range:
+  // [other_adr, other_adr + other_size).
+  bool other_adr_range_is_contiguous = !other->is_StoreVector() ||
+                                       other_opcode == Op_StoreVector ||
+                                       other_opcode == Op_StoreVectorMasked;
+
+  // Same address.
+  if (other_adr->eqv_uncast(_adr)) {
+    // A full contiguous store can cover other store with a contiguous address range.
+    if (_store_write_is_contiguous &&
+        other_adr_range_is_contiguous) {
+      return true;
+    }
+
+    // Handle masked/scatter vector stores by requiring the same write pattern.
+    if (_opcode != other_opcode ||
+        !_is_StoreVector) {
+      return false;
+    }
+
+    const StoreVectorNode* n = _store->as_StoreVector();
+    const StoreVectorNode* o = other->as_StoreVector();
+
+    if (_memory_size != other_size ||
+        n->element_size() != o->element_size() ||
+        n->length() != o->length()) {
+      return false;
+    }
+
+    switch (_opcode) {
+      case Op_StoreVectorMasked: {
+        const StoreVectorMaskedNode* n_m = _store->as_StoreVectorMasked();
+        const StoreVectorMaskedNode* o_m = other->as_StoreVectorMasked();
+        return n_m->mask()->eqv_uncast(o_m->mask());
+      }
+      case Op_StoreVectorScatter: {
+        const StoreVectorScatterNode* n_s = _store->as_StoreVectorScatter();
+        const StoreVectorScatterNode* o_s = other->as_StoreVectorScatter();
+        return n_s->indices()->eqv_uncast(o_s->indices());
+      }
+      case Op_StoreVectorScatterMasked: {
+        const StoreVectorScatterMaskedNode* n_sm = _store->as_StoreVectorScatterMasked();
+        const StoreVectorScatterMaskedNode* o_sm = other->as_StoreVectorScatterMasked();
+        return n_sm->indices()->eqv_uncast(o_sm->indices()) &&
+               n_sm->mask()->eqv_uncast(o_sm->mask());
+      }
+      default:
+        return false;
+    }
+  }
+
+  // Different address.
+  // Use offsets and sizes to decide whether the current store covers the other store.
+  if (!_store_write_is_contiguous ||
+      !other_adr_range_is_contiguous ||
+      !_can_compare_offsets) {
+    return false;
+  }
+
+  intptr_t other_offset = 0;
+  Node* other_base = AddPNode::Ideal_base_and_offset(other_adr, _phase, other_offset);
+  if (other_base == nullptr || other_offset == Type::OffsetBot) {
+    return false;
+  }
+
+  if (!other_base->eqv_uncast(_base) ||
+      other_offset < _offset) {
+    return false;
+  }
+
+  intptr_t offset_delta = other_offset - _offset;
+  intptr_t size_delta = (intptr_t)_memory_size - (intptr_t)other_size;
+
+  return offset_delta <= size_delta;
 }
 
 //=============================================================================
@@ -3517,11 +3625,11 @@ Node *StoreNode::Ideal(PhaseGVN *phase, bool can_reshape) {
   if (p)  return (p == NodeSentinel) ? nullptr : p;
 
   Node* mem     = in(MemNode::Memory);
-  Node* address = in(MemNode::Address);
   Node* value   = in(MemNode::ValueIn);
-  // Back-to-back stores to same address?  Fold em up.  Generally
-  // unsafe if I have intervening uses.
+  // Remove a previous store when the current store fully covers its writes.
+  // This is generally unsafe if there are intervening uses.
   {
+    AccessAnalyzer analyzer(phase, this);
     Node* st = mem;
     // If Store 'st' has more than one use, we cannot fold 'st' away.
     // For example, 'st' might be the final state at a conditional
@@ -3544,8 +3652,7 @@ Node *StoreNode::Ideal(PhaseGVN *phase, bool can_reshape) {
              (is_mismatched_access() || st->as_Store()->is_mismatched_access()),
              "no mismatched stores, except on raw memory: %s %s", NodeClassNames[Opcode()], NodeClassNames[st->Opcode()]);
 
-      if (st->in(MemNode::Address)->eqv_uncast(address) &&
-          st->as_Store()->memory_size() <= this->memory_size()) {
+      if (analyzer.store_fully_covers(st->as_Store())) {
         Node* use = st->raw_out(0);
         if (phase->is_IterGVN()) {
           phase->is_IterGVN()->rehash_node_delayed(use);

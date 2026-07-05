@@ -195,6 +195,12 @@ private:
   AllocateNode* _alloc;
   const TypePtr* _adr_type;
   int _alias_idx;
+  Node* const _adr;
+  StoreNode* const _store;
+  const int _opcode;
+  const bool _is_StoreVector;
+  bool _store_write_is_contiguous;
+  bool _can_compare_offsets;
 
 public:
   AccessAnalyzer(PhaseGVN* phase, MemNode* n);
@@ -220,6 +226,7 @@ public:
   };
 
   AccessIndependence detect_access_independence(Node* other) const;
+  bool store_fully_covers(const StoreNode* other) const;
 };
 
 //------------------------------LoadNode---------------------------------------
