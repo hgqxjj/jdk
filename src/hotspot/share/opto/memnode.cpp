@@ -995,8 +995,8 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
       return false;
     }
 
-    const StoreVectorNode* n = _store->as_StoreVector();
-    const StoreVectorNode* o = other->as_StoreVector();
+    StoreVectorNode* n = _store->as_StoreVector();
+    StoreVectorNode* o = other->as_StoreVector();
 
     if (_memory_size != other_size ||
         n->element_size() != o->element_size() ||
@@ -1006,18 +1006,18 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
 
     switch (_opcode) {
       case Op_StoreVectorMasked: {
-        const StoreVectorMaskedNode* n_m = _store->as_StoreVectorMasked();
-        const StoreVectorMaskedNode* o_m = other->as_StoreVectorMasked();
+        StoreVectorMaskedNode* n_m = _store->as_StoreVectorMasked();
+        StoreVectorMaskedNode* o_m = other->as_StoreVectorMasked();
         return n_m->mask()->eqv_uncast(o_m->mask());
       }
       case Op_StoreVectorScatter: {
-        const StoreVectorScatterNode* n_s = _store->as_StoreVectorScatter();
-        const StoreVectorScatterNode* o_s = other->as_StoreVectorScatter();
+        StoreVectorScatterNode* n_s = _store->as_StoreVectorScatter();
+        StoreVectorScatterNode* o_s = other->as_StoreVectorScatter();
         return n_s->indices()->eqv_uncast(o_s->indices());
       }
       case Op_StoreVectorScatterMasked: {
-        const StoreVectorScatterMaskedNode* n_sm = _store->as_StoreVectorScatterMasked();
-        const StoreVectorScatterMaskedNode* o_sm = other->as_StoreVectorScatterMasked();
+        StoreVectorScatterMaskedNode* n_sm = _store->as_StoreVectorScatterMasked();
+        StoreVectorScatterMaskedNode* o_sm = other->as_StoreVectorScatterMasked();
         return n_sm->indices()->eqv_uncast(o_sm->indices()) &&
                n_sm->mask()->eqv_uncast(o_sm->mask());
       }
