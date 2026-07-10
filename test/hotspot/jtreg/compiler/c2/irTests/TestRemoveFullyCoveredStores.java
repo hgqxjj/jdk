@@ -166,7 +166,7 @@ public class TestRemoveFullyCoveredStores {
     @IR(counts = {IRNode.STORE_VECTOR_SCATTER, "1"},
         phase = CompilePhase.BEFORE_MATCHING,
         applyIf = {"MaxVectorSize", ">= 32"},
-        applyIfCPUFeatureOr = {"asimd", "true", "avx", "true", "rvv", "true"})
+        applyIfCPUFeatureOr = {"sve", "true"})
     public static long[] testScatterStoreVectorSameIndices() {
         long[] res = new long[L256.length()];
         LongVector longVector256Early = LongVector.fromArray(L256, longArray256Early, 0);
@@ -186,7 +186,7 @@ public class TestRemoveFullyCoveredStores {
     @IR(counts = {IRNode.STORE_VECTOR_SCATTER_MASKED, "1"},
         phase = CompilePhase.BEFORE_MATCHING,
         applyIf = {"MaxVectorSize", ">= 32"},
-        applyIfCPUFeatureOr = {"asimd", "true", "avx", "true", "rvv", "true"})
+        applyIfCPUFeatureOr = {"sve", "true"})
     public static long[] testScatterMaskedStoreVectorSameIndicesAndMask() {
         long[] res = new long[L256.length()];
         LongVector longVector256Early = LongVector.fromArray(L256, longArray256Early, 0);
