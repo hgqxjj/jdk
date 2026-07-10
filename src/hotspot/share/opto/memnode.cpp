@@ -1046,7 +1046,7 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
 
   if (!other_base->eqv_uncast(_base) ||
       other_offset < _offset ||
-      offset < 0) {
+      _offset < 0) {
     return false;
   }
 
