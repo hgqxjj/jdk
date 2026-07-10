@@ -981,7 +981,7 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
                                        other_opcode == Op_StoreVector ||
                                        other_opcode == Op_StoreVectorMasked;
 
-  // Same address.
+  // For same address.
   if (other_adr->eqv_uncast(_adr)) {
     // A full contiguous store can cover other store with a contiguous address range.
     if (_store_write_is_contiguous &&
@@ -989,7 +989,7 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
       return true;
     }
 
-    // Handle masked/scatter vector stores by requiring the same write pattern.
+    // Handle masked/scatter vector stores.
     if (_opcode != other_opcode ||
         !_is_StoreVector) {
       return false;
@@ -998,6 +998,7 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
     StoreVectorNode* n = _store->as_StoreVector();
     StoreVectorNode* o = other->as_StoreVector();
 
+    // Same write pattern.
     if (_memory_size != other_size ||
         n->element_size() != o->element_size() ||
         n->length() != o->length()) {
@@ -1026,14 +1027,17 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
     }
   }
 
-  // Different address.
-  // Use offsets and sizes to decide whether the current store covers the other store.
+  // For different address.
+  // This is only valid when the current store writes a contiguous range,
+  // the other store has a contiguous address range, and both offsets can be
+  // compared against the same base.
   if (!_store_write_is_contiguous ||
       !other_adr_range_is_contiguous ||
       !_can_compare_offsets) {
     return false;
   }
 
+  // Use offsets and sizes to decide whether the current store covers the other store.
   intptr_t other_offset = 0;
   Node* other_base = AddPNode::Ideal_base_and_offset(other_adr, _phase, other_offset);
   if (other_base == nullptr || other_offset == Type::OffsetBot) {
@@ -1041,7 +1045,8 @@ bool AccessAnalyzer::store_fully_covers(const StoreNode* other) const {
   }
 
   if (!other_base->eqv_uncast(_base) ||
-      other_offset < _offset) {
+      other_offset < _offset ||
+      offset < 0) {
     return false;
   }
 

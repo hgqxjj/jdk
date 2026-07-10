@@ -32,10 +32,10 @@ import java.util.Arrays;
 /*
  * @test
  * @bug 8387472
- * @summary Test removal of a redundant smaller StoreVector fully covered
- *          by a later wider StoreVector at a different address.
+ * @summary Test removal of fully covered stores and same-pattern vector stores.
  * @library /test/lib /
- * @modules jdk.incubator.vector
+ * @modules java.base/jdk.internal.misc
+ *          jdk.incubator.vector
  * @run driver ${test.main.class}
  */
 
@@ -44,31 +44,58 @@ public class TestRemoveFullyCoveredStores {
 
     static final byte[] BYTES = new byte[16];
     static final long BYTE_BASE = UNSAFE.arrayBaseOffset(byte[].class);
-
-    static final int[] DST = new int[8];
-    static final int[] SRC_A = new int[8];
-    static final int[] SRC_B = new int[8];
-
-    static final VectorSpecies<Integer> I64  = IntVector.SPECIES_64;
-    static final VectorSpecies<Integer> I128 = IntVector.SPECIES_128;
+    // Species
+    static final VectorSpecies<Integer> I256 = IntVector.SPECIES_256;
+    static final VectorSpecies<Integer> I512 = IntVector.SPECIES_512;
+    static final VectorSpecies<Long> L256 = LongVector.SPECIES_256;
+    // Arrays
+    static final int[] intArray256Early = new int[I256.length()];
+    static final int[] intArray256Late = new int[I256.length()];
+    static final int[] intArray512 = new int[I512.length()];
+    static final long[] longArray256Early = new long[L256.length()];
+    static final long[] longArray256Late = new long[L256.length()];
+    // Indices
+    static final int[] longIndices256 = new int[L256.length()];
+    // Masks
+    static final boolean[] intMask256 = new boolean[I256.length()];
+    static final boolean[] longMask256 = new boolean[L256.length()];
+    static final VectorMask<Integer> intVectorMask256;
+    static final VectorMask<Long> longVectorMask256;
 
     static {
-        for (int i = 0; i < SRC_A.length; i++) {
-            SRC_A[i] = 1000 + i;
-            SRC_B[i] = 2000 + i;
+        for (int i = 0; i < I256.length(); i++) {
+            intArray256Early[i] = 256 + i;
+            intArray256Late[i] = 652 + i;
+            intMask256[i] = i % 2 == 0;
         }
+
+        for (int i = 0; i < I512.length(); i++) {
+            intArray512[i] = 512 + i;
+        }
+
+        for (int i = 0; i < L256.length(); i++) {
+            longArray256Early[i] = 256L + i;
+            longArray256Late[i] = 652L + i;
+            longIndices256[i] = (i + L256.length() / 2) % L256.length();
+            longMask256[i] = i % 2 == 0;
+        }
+
+        intVectorMask256 = VectorMask.fromArray(I256, intMask256, 0);
+        longVectorMask256 = VectorMask.fromArray(L256, longMask256, 0);
     }
 
     public static void main(String[] args) {
-        TestFramework.run();
+        TestFramework.runWithFlags("--add-exports", "java.base/jdk.internal.misc=ALL-UNNAMED",
+                                   "--add-modules", "jdk.incubator.vector",
+                                   "-XX:-TieredCompilation");
     }
 
     /*
+     * Contiguous store fully covers contiguous store even though
+     * they use different addresses.
+     *
      * StoreI [base + 4, base + 8)
      * StoreL [base + 0, base + 8)
-     *
-     * The later StoreL fully covers the earlier StoreI even though the stores
-     * use different addresses.
      */
     @Test
     @IR(counts = {IRNode.STORE_I, "0", IRNode.STORE_L, "1"},
@@ -78,45 +105,127 @@ public class TestRemoveFullyCoveredStores {
         UNSAFE.putLong(BYTES, BYTE_BASE, 0x1122334455667788L);
     }
 
-    @Run(test = "testStoreLongCoversStoreInt")
-    @Warmup(0)
-    public static void runStoreLongCoversStoreInt() {
-        Arrays.fill(BYTES, (byte)0);
-        testStoreLongCoversStoreInt();
-        Asserts.assertEQ(UNSAFE.getLong(BYTES, BYTE_BASE),
-                         0x1122334455667788L);
+    /*
+     * Contiguous store fully covers non-contiguous store
+     * even though they use different addresses.
+     *
+     * StoreVectorMasked256 res[1..8], mask = intVectorMask256
+     * byte range: [base + 4, base + 36)
+     *
+     * StoreVector512 res[0..15]
+     * byte range: [base + 0, base + 64)
+     *
+     */
+    @Test
+    @IR(counts = {IRNode.STORE_VECTOR_MASKED, "0", IRNode.STORE_VECTOR, "1"},
+        phase = CompilePhase.BEFORE_MATCHING,
+        applyIf = {"MaxVectorSize", ">= 64"},
+        applyIfCPUFeatureOr = {"avx512f", "true", "sve", "true", "rvv", "true"})
+    public static int[] testStoreVectorCoversMaskedStoreVector() {
+        int[] res = new int[I512.length()];
+        if (intVectorMask256.allTrue()){
+            return res;
+        }
+        IntVector intVector256 = IntVector.fromArray(I256, intArray256Early, 0);
+        IntVector intVector512 = IntVector.fromArray(I512, intArray512, 0);
+        intVector256.intoArray(res, 1, intVectorMask256);
+        intVector512.intoArray(res, 0);
+        return res;
     }
 
     /*
-     * StoreVector64  DST[1..2]
-     * byte range: [base + 4, base + 12)
+     * StoreVectorMasked same pattern.
      *
-     * StoreVector128 DST[0..3]
-     * byte range: [base + 0, base + 16)
-     *
-     * The later wider StoreVector fully covers the earlier smaller StoreVector
-     * even though the stores use different addresses.
+     * Same address, same vector size, same mask. The later masked store fully
+     * covers the earlier masked store.
      */
     @Test
-    @IR(counts = {IRNode.STORE_VECTOR, "1"},
+    @IR(counts = {IRNode.STORE_VECTOR_MASKED, "1"},
         phase = CompilePhase.BEFORE_MATCHING,
-        applyIf = {"MaxVectorSize", ">= 16"},
+        applyIf = {"MaxVectorSize", ">= 32"},
         applyIfCPUFeatureOr = {"asimd", "true", "avx", "true", "rvv", "true"})
-    public static void testWiderStoreVectorCoversSmallerStoreVector() {
-        IntVector.fromArray(I64, SRC_A, 0).intoArray(DST, 1);
-        IntVector.fromArray(I128, SRC_B, 0).intoArray(DST, 0);
+    public static int[] testMaskedStoreVectorSameMask() {
+        int[] res = new int[I256.length()];
+        if (intVectorMask256.allTrue()){
+            return res;
+        }
+        IntVector intVector256Early = IntVector.fromArray(I256, intArray256Early, 0);
+        IntVector intVector256Late = IntVector.fromArray(I256, intArray256Late, 0);
+        intVector256Early.intoArray(res, 0, intVectorMask256);
+        intVector256Late.intoArray(res, 0, intVectorMask256);
+        return res;
     }
 
-    @Run(test = "testWiderStoreVectorCoversSmallerStoreVector")
-    @Warmup(0)
-    public static void runWiderStoreVectorCoversSmallerStoreVector() {
-        Arrays.fill(DST, -1);
-        testWiderStoreVectorCoversSmallerStoreVector();
-        verifyVectorResult(I128.length());
+    /*
+     * StoreVectorScatter same pattern.
+     *
+     * Same address, same vector size, same index map. The later scatter store
+     * fully covers the earlier scatter store.
+     */
+    @Test
+    @IR(counts = {IRNode.STORE_VECTOR_SCATTER, "1"},
+        phase = CompilePhase.BEFORE_MATCHING,
+        applyIf = {"MaxVectorSize", ">= 32"},
+        applyIfCPUFeatureOr = {"asimd", "true", "avx", "true", "rvv", "true"})
+    public static long[] testScatterStoreVectorSameIndices() {
+        long[] res = new long[L256.length()];
+        LongVector longVector256Early = LongVector.fromArray(L256, longArray256Early, 0);
+        LongVector longVector256Late = LongVector.fromArray(L256, longArray256Late, 0);
+        longVector256Early.intoArray(res, 0, longIndices256, 0);
+        longVector256Late.intoArray(res, 0, longIndices256, 0);
+        return res;
     }
 
-    @DontInline
-    private static void verifyLongResult(long expected) {
-        Asserts.assertEquals(UNSAFE.getLong(BYTES, BYTE_BASE), expected);
+    /*
+     * StoreVectorScatterMasked same pattern.
+     *
+     * Same address, same vector size, same index map, same mask. The later
+     * scatter-masked store fully covers the earlier scatter-masked store.
+     */
+    @Test
+    @IR(counts = {IRNode.STORE_VECTOR_SCATTER_MASKED, "1"},
+        phase = CompilePhase.BEFORE_MATCHING,
+        applyIf = {"MaxVectorSize", ">= 32"},
+        applyIfCPUFeatureOr = {"asimd", "true", "avx", "true", "rvv", "true"})
+    public static long[] testScatterMaskedStoreVectorSameIndicesAndMask() {
+        long[] res = new long[L256.length()];
+        LongVector longVector256Early = LongVector.fromArray(L256, longArray256Early, 0);
+        LongVector longVector256Late = LongVector.fromArray(L256, longArray256Late, 0);
+        longVector256Early.intoArray(res, 0, longIndices256, 0, longVectorMask256);
+        longVector256Late.intoArray(res, 0, longIndices256, 0, longVectorMask256);
+        return res;
+    }
+
+    @Run(test = {"testStoreLongCoversStoreInt",
+                 "testStoreVectorCoversMaskedStoreVector",
+                 "testMaskedStoreVectorSameMask",
+                 "testScatterStoreVectorSameIndices",
+                 "testScatterMaskedStoreVectorSameIndicesAndMask"})
+    public static void runTest() {
+        testStoreLongCoversStoreInt();
+        Asserts.assertEQ(UNSAFE.getLong(BYTES, BYTE_BASE),
+                         0x1122334455667788L);
+
+        int[] res = testStoreVectorCoversMaskedStoreVector();
+        Asserts.assertTrue(Arrays.equals(res, intArray512));
+
+        res = testMaskedStoreVectorSameMask();
+        for (int i = 0; i < I256.length(); i++) {
+            int expected = intVectorMask256.laneIsSet(i) ? intArray256Late[i] : 0;
+            Asserts.assertEQ(res[i], expected);
+        }
+
+        long[] res1 = testScatterStoreVectorSameIndices();
+        for (int i = 0; i < L256.length(); i++) {
+            int index = longIndices256[i];
+            Asserts.assertEquals(res1[index], longArray256Late[i]);
+        }
+
+        res1 = testScatterMaskedStoreVectorSameIndicesAndMask();
+        for (int i = 0; i < L256.length(); i++) {
+            int index = longIndices256[i];
+            long expected = longVectorMask256.laneIsSet(i) ? longArray256Late[i] : 0L;
+            Asserts.assertEQ(res1[index], expected);
+        }
     }
 }

@@ -183,7 +183,6 @@ public:
   }
 };
 
-// Analyze a MemNode to try to prove that it is independent from other memory accesses
 class AccessAnalyzer : StackObj {
 private:
   PhaseGVN* const _phase;
@@ -224,7 +223,7 @@ public:
     // - 'mem' is nullptr otherwise.
     Node* mem;
   };
-
+  // Analyze a MemNode to try to prove that it is independent from other memory accesses
   AccessIndependence detect_access_independence(Node* other) const;
   bool store_fully_covers(const StoreNode* other) const;
 };
