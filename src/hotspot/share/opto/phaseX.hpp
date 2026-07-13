@@ -318,6 +318,18 @@ public:
   // Record a type for a node.
   void    set_type(const Node* n, const Type *t) {
     assert(t != nullptr, "type must not be null");
+#ifdef ASSERT
+    const TypePtr* ptr = t->make_ptr();
+    if (ptr != nullptr) {
+      const TypePtr* speculative = ptr->speculative();
+      assert(speculative == nullptr ||
+             speculative->with_inline_depth(ptr->inline_depth())
+                        ->higher_equal(ptr->remove_speculative()),
+             "node %u %s: speculative type must not be wider than "
+             "non-speculative type",
+             n->_idx, n->Name());
+    }
+#endif
     _types.map(n->_idx, t);
   }
   void    clear_type(const Node* n) {
