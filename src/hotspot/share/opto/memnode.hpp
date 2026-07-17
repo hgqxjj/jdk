@@ -613,6 +613,7 @@ public:
 
   virtual const Type* Value(PhaseGVN* phase) const;
   virtual Node* Identity(PhaseGVN* phase);
+  virtual Node* Ideal(PhaseGVN* phase, bool can_reshape);
 };
 
 

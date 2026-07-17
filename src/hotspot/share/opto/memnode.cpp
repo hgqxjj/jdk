@@ -2723,6 +2723,23 @@ LoadNode* LoadNode::pin_node_under_control_impl() const {
   return nullptr;
 }
 
+Node* LoadNKlassNode::Ideal(PhaseGVN* phase, bool can_reshape) {
+  Node* result = LoadNode::Ideal(phase, can_reshape);
+  if (result != nullptr) {
+    return result;
+  }
+
+  Node* x = klass_identity_common(phase);
+  const Type* t = phase->type(x);
+
+  if (t == Type::TOP || t->isa_narrowklass()) {
+    return nullptr;
+  }
+
+  assert(!t->isa_narrowoop(), "no narrow oop here");
+  return new EncodePKlassNode(x, t->make_narrowklass());
+}
+
 //------------------------------Value------------------------------------------
 const Type* LoadNKlassNode::Value(PhaseGVN* phase) const {
   const Type *t = klass_value_common(phase);
@@ -2743,7 +2760,7 @@ Node* LoadNKlassNode::Identity(PhaseGVN* phase) {
   if( t->isa_narrowklass()) return x;
   assert (!t->isa_narrowoop(), "no narrow oop here");
 
-  return phase->transform(new EncodePKlassNode(x, t->make_narrowklass()));
+  return this;
 }
 
 //------------------------------Value-----------------------------------------
