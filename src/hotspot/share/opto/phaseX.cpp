@@ -686,6 +686,15 @@ Node* PhaseGVN::apply_ideal(Node* k, bool can_reshape) {
   return i;
 }
 
+//=============================================================================
+Node* PhaseGVN::apply_identity(Node* n) {
+  DEBUG_ONLY(uint old_unique = C->unique();)
+  Node* const i = n->Identity(this);
+  assert(i->_idx < old_unique,
+         "Identity() must return an existing node");
+  return i;
+}
+
 //------------------------------transform--------------------------------------
 // Return a node which computes the same function as this node, but
 // in a faster or cheaper fashion.
@@ -737,7 +746,7 @@ Node* PhaseGVN::transform(Node* n) {
   }
 
   // Now check for Identities
-  i = k->Identity(this);        // Look for a nearby replacement
+  i = apply_identity(k);        // Look for a nearby replacement
   if (i != k) {                 // Found? Return replacement!
     set_progress();
     return i;
@@ -2133,7 +2142,7 @@ void PhaseIterGVN::verify_Identity_for(Node* n) {
     return;
   }
 
-  Node* i = n->Identity(this);
+  Node* i = apply_identity(n);
   // If we cannot find any other Identity, we are happy.
   if (i == n) {
     verify_empty_worklist(n);
@@ -2399,7 +2408,7 @@ Node *PhaseIterGVN::transform_old(Node* n) {
   }
 
   // Now check for Identities
-  i = k->Identity(this);      // Look for a nearby replacement
+  i = apply_identity(k);      // Look for a nearby replacement
   if (i != k) {                // Found? Return replacement!
     set_progress();
     add_users_to_worklist(k);
