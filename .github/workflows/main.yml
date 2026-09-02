@@ -212,6 +212,7 @@ jobs:
       runs-on: 'ubuntu-24.04-arm'
       bootjdk-platform: linux-aarch64
       gcc-major-version: '14'
+      debug-levels: '[ "debug" ]'
       configure-arguments: ${{ github.event.inputs.configure-arguments }}
       make-arguments: ${{ github.event.inputs.make-arguments }}
       dry-run: ${{ needs.prepare.outputs.dry-run == 'true' }}

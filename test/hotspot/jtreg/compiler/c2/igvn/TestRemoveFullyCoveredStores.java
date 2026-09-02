@@ -66,6 +66,15 @@ public class TestRemoveFullyCoveredStores {
             "--add-opens=jdk.incubator.vector/jdk.incubator.vector=ALL-UNNAMED"
         ));
 
+        vmArgs.addAll(List.of(
+            "-ea",
+            "-esa",
+            "-XX:CompileThreshold=100",
+            "-XX:+UnlockExperimentalVMOptions",
+            "-server",
+            "-XX:-TieredCompilation"
+        ));                 
+     
         vmArgs.addAll(Arrays.asList(args));
 
         String[] vmArgsArray = vmArgs.toArray(new String[0]);
