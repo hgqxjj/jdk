@@ -14,9 +14,9 @@
  *      -XX:CompileThreshold=100
  *      -XX:-BackgroundCompilation
  *      -Xbatch
- *      -XX:CompileCommand=compileonly,compiler.c2.igvn.TestSegmentSetVectorStoresFixed::test*
- *      -XX:CompileCommand=exclude,compiler.c2.igvn.TestSegmentSetVectorStoresFixed::reference*
- *      compiler.c2.igvn.TestSegmentSetVectorStoresFixed
+ *      -XX:CompileCommand=compileonly,compiler.c2.igvn.TestRemoveFullyCoveredStores::test*
+ *      -XX:CompileCommand=exclude,compiler.c2.igvn.TestRemoveFullyCoveredStores::reference*
+ *      compiler.c2.igvn.TestRemoveFullyCoveredStores
  */
 
 package compiler.c2.igvn;
@@ -32,7 +32,7 @@ import jdk.incubator.vector.ShortVector;
 import jdk.incubator.vector.VectorMask;
 import jdk.internal.misc.Unsafe;
 
-public class TestSegmentSetVectorStoresFixed {
+public class TestRemoveFullyCoveredStores {
     private static final ValueLayout.OfShort SHORT_UNALIGNED = ValueLayout.JAVA_SHORT.withByteAlignment(1);
     private static final ValueLayout.OfInt INT_UNALIGNED = ValueLayout.JAVA_INT.withByteAlignment(1);
     private static final ValueLayout.OfLong LONG_UNALIGNED = ValueLayout.JAVA_LONG.withByteAlignment(1);
@@ -51,17 +51,17 @@ public class TestSegmentSetVectorStoresFixed {
 
     public static void main(String[] args) {
         checkShort("linuxFloat16128POSITIVErandomMixedStores", referenceLinuxFloat16128POSITIVErandomMixedStores(),
-                   TestSegmentSetVectorStoresFixed::testLinuxFloat16128POSITIVErandomMixedStores);
+                   TestRemoveFullyCoveredStores::testLinuxFloat16128POSITIVErandomMixedStores);
         checkLong("linuxLong128NEGATIVErandomMixedStores", referenceLinuxLong128NEGATIVErandomMixedStores(),
-                  TestSegmentSetVectorStoresFixed::testLinuxLong128NEGATIVErandomMixedStores);
+                  TestRemoveFullyCoveredStores::testLinuxLong128NEGATIVErandomMixedStores);
         checkShort("windowsFloat16128POSITIVErandomMixedStores", referenceWindowsFloat16128POSITIVErandomMixedStores(),
-                   TestSegmentSetVectorStoresFixed::testWindowsFloat16128POSITIVErandomMixedStores);
+                   TestRemoveFullyCoveredStores::testWindowsFloat16128POSITIVErandomMixedStores);
         checkInt("windowsInteger128NEGATIVErandomMixedStores", referenceWindowsInteger128NEGATIVErandomMixedStores(),
-                 TestSegmentSetVectorStoresFixed::testWindowsInteger128NEGATIVErandomMixedStores);
+                 TestRemoveFullyCoveredStores::testWindowsInteger128NEGATIVErandomMixedStores);
         checkLong("windowsLong128NEGATIVErandomMixedStores", referenceWindowsLong128NEGATIVErandomMixedStores(),
-                  TestSegmentSetVectorStoresFixed::testWindowsLong128NEGATIVErandomMixedStores);
+                  TestRemoveFullyCoveredStores::testWindowsLong128NEGATIVErandomMixedStores);
         checkShort("macOrConfirmedShort64NEGATIVErandomMixedStores", referenceMacOrConfirmedShort64NEGATIVErandomMixedStores(),
-                   TestSegmentSetVectorStoresFixed::testMacOrConfirmedShort64NEGATIVErandomMixedStores);
+                   TestRemoveFullyCoveredStores::testMacOrConfirmedShort64NEGATIVErandomMixedStores);
     }
 
     @FunctionalInterface
