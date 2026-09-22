@@ -373,6 +373,7 @@ jobs:
       runs-on: windows-2022
       architecture: 'x86.x64'
       msvc-toolset-version: '14.44'
+      debug-levels: '[ "debug" ]'
       configure-arguments: ${{ github.event.inputs.configure-arguments }}
       make-arguments: ${{ github.event.inputs.make-arguments }}
       dry-run: ${{ needs.prepare.outputs.dry-run == 'true' }}
